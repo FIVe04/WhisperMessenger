@@ -22,7 +22,7 @@
   - [3.4. P256 ECDSA (подпись signed prekey)](#34-p256-ecdsa-подпись-signed-prekey)
   - [3.5. AES-GCM (шифрование сообщений)](#35-aes-gcm-шифрование-сообщений)
   - [3.6. Base64 (кодирование бинарных данных)](#36-base64-кодирование-бинарных-данных)
-  - [3.7. Собственная схема установления сессий (статический DH без рачетов)](#37-собственная-схема-установления-сессий-статический-dh-без-рачетов)
+  - [3.7. Собственная схема установления сессий (статический DH с one-time prekeys)](#37-собственная-схема-установления-сессий-статический-dh-с-one-time-prekeys)
 
 # 1. Общее описание проекта
 
@@ -62,8 +62,8 @@
 **iOS `WhispreClient/WhispreClient`:**
 - `App/` — SwiftUI Views, ViewModels, AppState, навигация.
 - `Networking/` — `APIService` (REST), `WebSocketService` (ws://).
-- `Crypto/` — KeyManager (Keychain), SessionManager (DH + HKDF + storage), EncryptionService (AES-GCM), EncryptionSessionHelper (получение ключей/сессий).
-- `App/Initializers/SessionInitializer.swift` — регистрация устройства, старт WebSocket.
+- `Crypto/` — KeyManager (Keychain + UserDefaults для one-time prekeys), SessionManager (DH + HKDF + storage), EncryptionService (AES-GCM + envelope для OTPK handshake), EncryptionSessionHelper (legacy создание сессий по identity).
+- `App/Initializers/SessionInitializer.swift` — регистрация устройства, старт WebSocket, генерация и сохранение OTPK.
 - `Models/` — DTO: MessageResponse, ChatMessage, User, Device, Token, Friend и т.д.
 - Хранение ключей/сессий: Keychain (SecItem), UserDefaults.
 
@@ -79,15 +79,15 @@ Backend:
 - `app/models.py` — таблицы users/devices/one_time_prekeys/messages/sessions.
 
 iOS:
-- `Crypto/KeyManager.swift` — генерация/хранение identity key (P256.KeyAgreement), signed prekey (P256.Signing), one-time prekeys; удаление ключей.
-- `Crypto/SessionManager.swift` — хранение сессий (симметрические ключи) по deviceId, деривация через P256 DH + HKDF-SHA256; UserDefaults persistence.
-- `Crypto/EncryptionService.swift` — шифрование/дешифрование AES.GCM (симметрический ключ из SessionManager).
-- `Crypto/EncryptionSessionHelper.swift` — получение публичных ключей устройств с сервера и создание сессии.
-- `App/Initializers/SessionInitializer.swift` — генерация ключей, регистрация устройства (identity, signed prekey, подпись), создание one-time prekeys, старт WebSocket.
+- `Crypto/KeyManager.swift` — генерация/хранение identity key (P256.KeyAgreement), signed prekey (P256.Signing), one-time prekeys (приватные — UserDefaults), удаление ключей.
+- `Crypto/SessionManager.swift` — хранение сессий (симметрические ключи) по deviceId, деривация через P256 DH + HKDF-SHA256; UserDefaults persistence, создание сессии из готового ключа.
+- `Crypto/EncryptionService.swift` — шифрование/дешифрование AES.GCM, envelope (cipher + handshake) и bootstrap по OTPK handshake.
+- `Crypto/EncryptionSessionHelper.swift` — получение публичных ключей устройств с сервера и создание сессии (legacy по identity).
+- `App/Initializers/SessionInitializer.swift` — генерация ключей, регистрация устройства (identity, signed prekey, подпись), генерация/сохранение one-time prekeys, старт WebSocket.
 - `Networking/APIService.swift` — REST вызовы (users, devices, messages, keys).
 - `Networking/WebSocketService.swift` — WebSocket отправка/приём JSON сообщений.
-- `App/ViewModel/ChatViewModel.swift`, `FriendsViewModel.swift` — создание сессий при необходимости, вызов шифрования/дешифрования.
-- `App/View/WhispreClientApp.swift` — logout: сброс сессий, токенов, disconnect WebSocket (ключи теперь не удаляются).
+- `App/ViewModel/ChatViewModel.swift`, `FriendsViewModel.swift` — создание сессий при необходимости, вызов шифрования/дешифрования, автоподнятие сессий с OTPK.
+- `App/View/WhispreClientApp.swift` — logout: сброс сессий, токенов, disconnect WebSocket (ключи и OTPK остаются).
 
 # 2. Использование криптографии по сценариям
 
@@ -107,36 +107,34 @@ iOS:
 - Клиент сохраняет access/refresh в `UserDefaults`; SessionManager сбрасывает сессии при логине (`resetCryptoState`).
 
 ## 2.3. Установление/обновление сессии шифрования
-- Протокол: статический Diffie–Hellman на P256 без рачетов (Signal‑подобные prekey’и не используются для вычисления ключа; берётся только identity key).
+- Протокол: статический DH на P256 с попыткой использовать one-time prekey (OTPK) получателя для первого сообщения; если OTPK недоступен, откат к DH по identity.
 - Получение ключей другой стороны:
-  - `SessionBootstrapper.ensureSession` → `APIService.getUserDevices` (список устройств с полями `identity_key`, `signed_prekey`, `signed_prekey_signature`).
-  - `ChatViewModel.bootstrapIfNeeded` дополнительно вызывает `APIService.exchangeKeys` (`/keys/exchange/{recipient_id}`), получает bundles с identity/signed/one_time_prekey, но при создании сессии использует только `identity_key`.
+  - `APIService.exchangeKeys(recipientId)` возвращает bundle: identity_key, signed_prekey, signed_prekey_signature, one_time_prekey (+ id), device_id.
+  - `ChatViewModel`/`SessionBootstrapper` берут нужный device_id, пытаются использовать OTPK; если нет — используют identity_key.
 - Деривация сессионного ключа:
-  - `SessionManager.createSession`: P256.KeyAgreement (ECDH) между своим приватным identity ключом и публичным identity ключом собеседника → `sharedSecret`.
-  - HKDF-SHA256 с солью `"WhispreHKDFSalt_v2"` и `outputByteCount: 32` → симметрический ключ (256 бит).
-- Сохранение: SessionManager хранит `SessionModel` (recipientId -> symmetric key bytes) в памяти и UserDefaults (`com.whispre.sessions.v2`); привязка по `device_id` собеседника.
-- Подписи/one-time prekeys из бандла не проверяются и не используются при вычислении ключа.
+  - OTPK-путь: sender генерирует ephemeral P256, делает DH(ephemeral, recipient OTPK) → HKDF-SHA256 (соль `"WhispreHKDFSalt_OTPK_v1"`, 32 байта). Сохраняет сессию в SessionManager под device_id, прикладывает handshake (ephemeralPub, recipientOneTimePrekey) в envelope.
+  - Фолбек: `SessionManager.createSession` — DH(identity_priv, identity_pub) → HKDF-SHA256 (соль `"WhispreHKDFSalt_v2"`, 32 байта).
+- Сохранение: SessionManager хранит сессии в памяти и UserDefaults (`com.whispre.sessions.v2`) по device_id собеседника.
+- Подписи в бандле и one_time_prekey_signature не проверяются; OTPK хранится локально для собственных устройств в UserDefaults и расходуется/читается по handshake.
 
 ## 2.4. Отправка сообщения
 1. Пользователь вводит текст в `ChatViewModel.send`.
-2. Убеждается, что есть сессия: `SessionBootstrapper.ensureSession` (получает device_id, создаёт сессию при необходимости).
+2. Если сессии нет: тянет `/keys/exchange`, пробует создать сессию через OTPK (DH(ephemeral, OTPK) + HKDF) и формирует handshake (ephemeralPub, recipientOneTimePrekey). Если OTPK нет — создаёт сессию по identity.
 3. Шифрование: `EncryptionService.encryptMessage`:
-   - Ключ: `SessionManager.getSession(recipientDeviceId).symmetricKey()`.
-   - Алгоритм: `AES.GCM.seal` (CryptoKit), nonce автоматически генерируется; используется combined формат (nonce+ciphertext+tag).
-   - Результат: combined → Base64 строка.
+   - Ключ: из SessionManager для device_id.
+   - Алгоритм: `AES.GCM.seal` (CryptoKit), nonce генерируется автоматически, combined формат.
+   - Если есть handshake — шлёт envelope (JSON с `ciphertext`, `handshake`), иначе просто Base64 ciphertext.
 4. Отправка:
-   - Через WebSocket: `WebSocketService.sendMessage` отправляет JSON с полями `ciphertext` (Base64), `recipient_user_id`, `recipient_device_id`, `sender_device_id`, `content_type`.
-   - В коде закомментирован REST `/messages/send`, но WebSocket вариант активен.
-5. Подпись сообщения не выполняется; аутентификация опирается только на AEAD‑tag AES-GCM и знание сессионного ключа.
+   - WebSocket: `WebSocketService.sendMessage` с `ciphertext` (envelope или Base64), `recipient_user_id`, `recipient_device_id`, `sender_device_id`, `content_type`.
+   - REST `/messages/send` остаётся закомментированным.
+5. Подписи сообщений нет; аутентификация — только AEAD‑tag AES-GCM и знание сессионного ключа.
 
 ## 2.5. Получение и расшифровка сообщения
 - WebSocket: `WebSocketService` получает JSON `new_message` → делегаты (`FriendsViewModel`, `ChatViewModel`).
 - Дешифрование: `EncryptionService.decryptMessage`:
-  - Берёт сессионный ключ по `senderDeviceID` (если нет, выбрасывает `noSessionKey`).
-  - Расшифровка `AES.GCM.open` с combined данными (Base64 → data).
-- Автовосстановление сессии:
-  - `EncryptionService.decryptMessageWithAutoSession` при ошибке вызывает `/keys/exchange/{senderUserId}`, создаёт сессии по identity keys, затем повторяет дешифрование; если не удалось — возвращает "🔒".
-  - `ChatViewModel.didReceiveMessage` пытается bootstrap сессию по конкретному senderDeviceID через `SessionBootstrapper.ensureSession(forDeviceId:...)`.
+  - Пытается взять сессию по `senderDeviceID` и открыть AES-GCM.
+  - Если нет сессии и есть handshake в envelope: берёт свой приватный OTPK (по public из handshake), делает DH(ephemeral, OTPK) + HKDF, создаёт сессию и расшифровывает. OTPK хранится локально, не на сервере.
+  - Если handshake нет/не сработал: `decryptMessageWithAutoSession` запрашивает `/keys/exchange` и создаёт сессию по identity (фолбек), затем повторяет расшифровку; иначе возвращает "🔒".
 - Проверка подписи отправителя отсутствует; проверяется только AES-GCM tag (целостность/аутентичность ключа).
 
 ## 2.6. Работа с вложениями/медиа
@@ -148,9 +146,9 @@ iOS:
 ## 2.8. Хранение данных
 
 **Локально (iOS):**
-- Identity и signed prekey приватные ключи — Keychain (`KeyManager` использует `SecItemAdd` с `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`).
-- One-time prekeys хранятся в памяти при генерации; на диск не сохраняются.
-- Сессионные ключи — UserDefaults (`SessionManager` сериализует в JSON по `com.whispre.sessions.v2`).
+- Identity и signed prekey приватные ключи — Keychain (`KeyManager`, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`).
+- One-time prekeys приватные — UserDefaults (словарь pub->priv raw); не удаляются автоматически.
+- Сессионные ключи — UserDefaults (`SessionManager`, JSON `com.whispre.sessions.v2`).
 - Токены/ID пользователя/DeviceId — UserDefaults (`accessToken`, `refreshToken`, `userId`, `com.whispre.deviceId`).
 - Локальная БД шифрованием не покрыта (её нет).
 
@@ -165,9 +163,9 @@ iOS:
 - Ротация ключей: явного механизма нет (identity/signed prekey генерируются один раз при инициализации устройства; обновление не предусмотрено).
 - Logout (клиент `AppState.logout`):
   - Сбрасывает сессии SessionManager (`resetAll` + `logoutCurrentUser`), удаляет токены/userId из UserDefaults, разрывает WebSocket.
-  - Ключи в Keychain теперь НЕ удаляются (строка `KeyManager.deleteAllKeys` закомментирована), поэтому при повторном входе используется тот же ключевой материал и device_id.
+  - Identity/signed prekey и приватные OTPK остаются (Keychain/UserDefaults), поэтому при повторном входе ключевой материал сохраняется, но сохранённые сессии стираются.
 - Удаление аккаунта: по коду не реализовано.
-- One-time prekeys: выдаются по `keys/exchange`, помечаются used=true, но клиент их не использует для расчёта сессионного ключа и не загружает новые.
+- One-time prekeys: выдаются по `keys/exchange`, сервер помечает used=true; клиент использует для создания сессии (sender) и для восстановления по handshake (receiver). Обновление/допоставка OTPK на сервер не реализовано.
 
 # 3. Описание используемых криптографических алгоритмов
 
@@ -187,7 +185,7 @@ iOS:
 1. **Назначение:** Вычисление общего секрета между устройствами и вывод симметрического ключа для AES-GCM (`SessionManager.createSession`).
 2. **Как работает:** P256 ECDH между приватным identity ключом одной стороны и публичным identity другой → shared secret; HKDF-SHA256 с солью `"WhispreHKDFSalt_v2"` и пустым info выводит 32-байтный ключ.
 3. **Свойства:** Конфиденциальность ключа при компрометации канала; нет forward secrecy при компрометации статических ключей (используются статические identity ключи без рачетов).
-4. **Особенности:** Реализация CryptoKit (`P256.KeyAgreement`), `SharedSecret.hkdfDerivedSymmetricKey`. Не использует one-time prekeys/подписи бандла — уязвимо к подмене публичного ключа при отсутствии TLS/пиннинга.
+4. **Особенности:** Реализация CryptoKit (`P256.KeyAgreement`), `SharedSecret.hkdfDerivedSymmetricKey`. Используется как фолбек, если OTPK недоступен; подмена публичного ключа не защищена (нет TLS/пиннинга/подписей).
 
 ## 3.4. P256 ECDSA (подпись signed prekey)
 1. **Назначение:** Клиент подписывает свой signed prekey приватным P256.Signing key (`SessionInitializer.startSession`), отправляет подпись на сервер.
@@ -207,9 +205,8 @@ iOS:
 3. **Свойства:** Не даёт безопасности, только транспортное кодирование.
 4. **Особенности:** AES-GCM combined → Base64 в `EncryptionService`; публичные ключи → Base64 при регистрации устройства.
 
-## 3.7. Собственная схема установления сессий (статический DH без рачетов)
-1. **Назначение:** Организация E2E сессионного ключа между устройствами без полноценного Signal Double Ratchet.
-2. **Как работает:** Каждое устройство публикует статический identity key. Клиент берёт публичный identity собеседника (по device_id) и делает один P256 DH + HKDF. Сессия фиксируется на device_id, не обновляется. One-time prekeys и подписи в бандле не участвуют.
-3. **Свойства:** Обеспечивает конфиденциальность при отсутствии MITM и при сохранении приватных ключей. Нет forward secrecy (при компрометации приватного identity можно расшифровать все прошлые сообщения). Уязвимость к MITM из-за отсутствия проверки подписи бандла и отсутствия TLS/пиннинга.
-4. **Особенности:** Реализовано в `SessionManager.createSession`, `SessionBootstrapper`, `ChatViewModel.bootstrapIfNeeded`. Нет рачета/ротации; нет верификации fingerprint’ов; нет использования one-time prekeys.
-
+## 3.7. Собственная схема установления сессий (статический DH с one-time prekeys)
+1. **Назначение:** Организация E2E сессионного ключа без Double Ratchet: по возможности через одноразовый prekey, иначе через статический identity.
+2. **Как работает:** Получатель публикует identity + OTPK. Отправитель для первого сообщения делает DH(ephemeral, OTPK) → HKDF (соль `"WhispreHKDFSalt_OTPK_v1"`) и шлёт ciphertext в envelope с handshake (ephemeralPub, OTPK pub). Приёмник извлекает handshake, находит свой OTPK, делает тот же DH+HKDF, создаёт сессию и расшифровывает. Если OTPK нет, обе стороны используют DH(identity, identity) + HKDF.
+3. **Свойства:** Конфиденциальность; частичная forward secrecy для первого сообщения (ephemeral+OTPK). При компрометации статических identity — старые сообщения, зашифрованные по identity-DH, уязвимы. Нет защиты от MITM (нет проверки подписи бандла/пиннинга).
+4. **Особенности:** Реализовано в `EncryptionService.createSessionUsingOneTimePrekey/tryBootstrapFromHandshake`, `ChatViewModel.send`, `EncryptionService.decryptMessageWithAutoSession`. Нет рачетов/ротации, нет проверки подписей бандла, допоставка OTPK на сервер не реализована.

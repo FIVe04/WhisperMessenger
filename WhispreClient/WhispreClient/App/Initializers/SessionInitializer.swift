@@ -23,6 +23,9 @@ final class SessionInitializer {
             let oneTimePreKeys = KeyManager.shared.generateOneTimePreKeys(count: 10)
             let oneTimePreKeyPublics = oneTimePreKeys.map { $0.publicKey.rawRepresentation.base64EncodedString() }
 
+            // Сохраняем приватные one-time prekeys локально, чтобы уметь их расходовать при входящих сессиях
+            KeyManager.shared.storeOneTimePreKeys(for: currentUserId, keys: oneTimePreKeys)
+
 
             let deviceIdKey = "com.whispre.deviceId"
             let deviceId = UserDefaults.standard.string(forKey: deviceIdKey) ?? UUID().uuidString

@@ -141,6 +141,14 @@ final class SessionManager {
         }
     }
 
+    func createSessionFromSymmetricKey(recipientId: String, keyData: Data) {
+        queue.async(flags: .barrier) {
+            let model = SessionModel(recipientId: recipientId, symmetricKey: SymmetricKey(data: keyData))
+            self.sessions[recipientId] = model
+            self.persistToStorage()
+        }
+    }
+
     private func saveSession(_ session: SessionModel) {
         queue.async(flags: .barrier) {
             self.sessions[session.recipientId] = session

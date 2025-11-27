@@ -20,6 +20,10 @@ final class KeyManager {
     private func signedPreKeyTag(for userId: String) -> String {
         return "com.whispre.\(userId).signedPreKey"
     }
+
+    private func oneTimePreKeyStorageKey(for userId: String) -> String {
+        return "com.whispre.\(userId).oneTimePreKeys"
+    }
     
     // MARK: - Identity Key
     
@@ -41,6 +45,40 @@ final class KeyManager {
     func deleteSignedPreKey(for userId: String) {
         deletePrivateKey(tag: signedPreKeyTag(for: userId))
     }
+
+    // MARK: - One-time Prekeys (храним приватные ключи локально)
+
+    func storeOneTimePreKeys(for userId: String, keys: [P256.KeyAgreement.PrivateKey]) {
+        let storageKey = oneTimePreKeyStorageKey(for: userId)
+        var dict: [String: String] = [:] // pubBase64 -> privRawBase64
+        for key in keys {
+            let pub = key.publicKey.rawRepresentation.base64EncodedString()
+            let priv = key.rawRepresentation.base64EncodedString()
+            dict[pub] = priv
+        }
+        UserDefaults.standard.set(dict, forKey: storageKey)
+    }
+
+    func consumeOneTimePreKey(for userId: String, publicKeyBase64: String, remove: Bool = false) -> P256.KeyAgreement.PrivateKey? {
+        let storageKey = oneTimePreKeyStorageKey(for: userId)
+        guard var dict = UserDefaults.standard.dictionary(forKey: storageKey) as? [String: String],
+              let privBase64 = dict[publicKeyBase64],
+              let privData = Data(base64Encoded: privBase64),
+              let priv = try? P256.KeyAgreement.PrivateKey(rawRepresentation: privData) else {
+            return nil
+        }
+        if remove {
+            dict.removeValue(forKey: publicKeyBase64)
+            UserDefaults.standard.set(dict, forKey: storageKey)
+        }
+        return priv
+    }
+
+    func hasOneTimePreKey(for userId: String, publicKeyBase64: String) -> Bool {
+        let storageKey = oneTimePreKeyStorageKey(for: userId)
+        guard let dict = UserDefaults.standard.dictionary(forKey: storageKey) as? [String: String] else { return false }
+        return dict[publicKeyBase64] != nil
+    }
     
     // MARK: - Signed Prekey
     
@@ -60,6 +98,8 @@ final class KeyManager {
     func deleteAllKeys(for userId: String) {
         deleteIdentityKey(for: userId)
         deleteSignedPreKey(for: userId)
+        let storageKey = oneTimePreKeyStorageKey(for: userId)
+        UserDefaults.standard.removeObject(forKey: storageKey)
     }
     
     // MARK: - One-time Prekeys (опционально)

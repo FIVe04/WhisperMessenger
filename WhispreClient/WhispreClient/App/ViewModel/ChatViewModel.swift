@@ -47,25 +47,8 @@ final class ChatViewModel: ObservableObject {
 
     private func bootstrapIfNeeded() async {
         do {
-            // 1️⃣ Сессия устройства (у тебя уже есть)
-            let deviceId = try await SessionBootstrapper.ensureSession(recipientUserID: recipientUserID, token: token)
-            self.recipientDeviceID = deviceId
-
-            // 2️⃣ Получаем ключи собеседника
-            let keyBundles = try await APIService.shared.exchangeKeys(recipientId: recipientUserID, token: token)
-
-            // 3️⃣ Для каждого устройства создаём сессию
-            for bundle in keyBundles {
-                guard let identityKey = bundle["identity_key"] as? String else { continue }
-                // попробуем достать device_id из bundle (если сервер возвращает)
-                let bundleDeviceId = bundle["device_id"] as? String ?? recipientUserID // fallback (legacy)
-                // создаём сессию, сохраняем под device_id (bundleDeviceId)
-                try SessionManager.shared.createSession(
-                    withRecipientPublicKeyBase64: identityKey,
-                    recipientId: bundleDeviceId
-                )
-            }
-
+            let devices = try await APIService.shared.getUserDevices(userId: recipientUserID, token: token)
+            self.recipientDeviceID = devices.first?.device_id
 
         } catch {
             print("❌ bootstrapIfNeeded failed:", error.localizedDescription)
@@ -81,33 +64,43 @@ final class ChatViewModel: ObservableObject {
             do {
                 // убедимся, что есть recipientDeviceID
                 if recipientDeviceID == nil {
-                    recipientDeviceID = try await SessionBootstrapper.ensureSession(recipientUserID: recipientUserID, token: token)
+                    let devices = try await APIService.shared.getUserDevices(userId: recipientUserID, token: token)
+                    recipientDeviceID = devices.first?.device_id
                 }
                 guard let rDeviceId = recipientDeviceID else { return }
 
+                var handshake: EncryptionService.HandshakeMetadata?
+                if !SessionManager.shared.hasSession(for: rDeviceId) {
+                    let keyBundles = try await APIService.shared.exchangeKeys(recipientId: recipientUserID, token: token)
+
+                    if let bundle = keyBundles.first(where: { ($0["device_id"] as? String ?? recipientUserID) == rDeviceId }),
+                       let otpk = bundle["one_time_prekey"] as? String {
+                        do {
+                            handshake = try EncryptionService.shared.createSessionUsingOneTimePrekey(recipientDeviceId: rDeviceId, recipientOneTimePrekeyBase64: otpk)
+                        } catch {
+                            print("⚠️ Failed to use one-time prekey, fallback to identity:", error.localizedDescription)
+                        }
+                    }
+
+                    if handshake == nil,
+                       let bundle = keyBundles.first(where: { ($0["device_id"] as? String ?? recipientUserID) == rDeviceId }),
+                       let identityKey = bundle["identity_key"] as? String {
+                        try SessionManager.shared.createSession(
+                            withRecipientPublicKeyBase64: identityKey,
+                            recipientId: rDeviceId
+                        )
+                    }
+                }
+
                 // шифрование
-                let cipher = try EncryptionService.shared.encryptMessage(text, recipientId: rDeviceId)
+                let cipher = try EncryptionService.shared.encryptMessage(text, recipientId: rDeviceId, handshake: handshake)
 
 
                 // мои данные
                 let myDeviceId = UserDefaults.standard.string(forKey: myDeviceIdKey) ?? "unknown-device"
 
-                // отправка (через REST; можешь вместо этого вызвать WebSocketService.shared.sendMessage)
-//                let resp = try await APIService.shared.sendMessage(
-//                    token: token,
-//                    senderDeviceId: myDeviceId,
-//                    recipientUserId: recipientUserID,
-//                    recipientDeviceId: rDeviceId,
-//                    ciphertext: cipher,
-//                    contentType: "text"
-//                )
-//
-//                // локально отобразим
-//                messages.append(
-//                    .init(id: resp.id, text: text, isMine: true, createdAt: resp.created_at)
-//                )
 
-                // параллельно скажем WS (если хочешь именно WS-отправку — раскомментируй)
+
                 
                 let tempId = UUID().uuidString
                 messages.append(
@@ -241,7 +234,12 @@ extension ChatViewModel: WebSocketServiceDelegate {
 
         Task {
             do {
-                let plain = try EncryptionService.shared.decryptMessage(message.ciphertext, senderId: decryptId)
+                let plain = await EncryptionService.shared.decryptMessageWithAutoSession(
+                    message.ciphertext,
+                    senderId: decryptId,
+                    senderUserId: message.senderUserID,
+                    token: token
+                )
                 let row = MessageRow(id: message.id, text: plain, isMine: false, createdAt: message.createdAt)
                 messages.append(row)
             } catch {

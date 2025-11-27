@@ -60,10 +60,12 @@ struct RegisterView: View {
                             .textFieldStyle(CustomTextFieldStyle(height: 46))
                             .padding(.top, 10)
                             .textInputAutocapitalization(.never)
+                            .textContentType(.none)
                         SecureField("Repeat password", text: $viewModel.repeatPassword)
                             .textFieldStyle(CustomTextFieldStyle(height: 46))
                             .padding(.top, 10)
                             .textInputAutocapitalization(.never)
+                            .textContentType(.none)
                         
                         
                         Button(action: {

@@ -28,6 +28,13 @@ class RegisterViewModel: ObservableObject {
                 isLoading = false
                 return
             }
+            
+            if (password.count < 3) {
+                errorMessage = "Password length sould be 3 or more symbols!"
+                isLoading = false
+                return
+            }
+            
             let id = try await APIService.shared.register(email: email, username: username, password: password)
 
             print("Register successful: \(id)")

@@ -4,7 +4,14 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="57f68cae-9243-4fc6-9f92-5cb5dfbc9b7b" name="Changes" comment="" />
+    <list default="true" id="57f68cae-9243-4fc6-9f92-5cb5dfbc9b7b" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/../WhispreClient/WhispreClient.xcodeproj/project.xcworkspace/xcuserdata/ivanfrolov.xcuserdatad/UserInterfaceState.xcuserstate" beforeDir="false" afterPath="$PROJECT_DIR$/../WhispreClient/WhispreClient.xcodeproj/project.xcworkspace/xcuserdata/ivanfrolov.xcuserdatad/UserInterfaceState.xcuserstate" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../WhispreClient/WhispreClient/App/Initializers/SessionInitializer.swift" beforeDir="false" afterPath="$PROJECT_DIR$/../WhispreClient/WhispreClient/App/Initializers/SessionInitializer.swift" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../WhispreClient/WhispreClient/App/ViewModel/ChatViewModel.swift" beforeDir="false" afterPath="$PROJECT_DIR$/../WhispreClient/WhispreClient/App/ViewModel/ChatViewModel.swift" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../WhispreClient/WhispreClient/Crypto/EncryptionService.swift" beforeDir="false" afterPath="$PROJECT_DIR$/../WhispreClient/WhispreClient/Crypto/EncryptionService.swift" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../WhispreClient/WhispreClient/Crypto/KeyManager.swift" beforeDir="false" afterPath="$PROJECT_DIR$/../WhispreClient/WhispreClient/Crypto/KeyManager.swift" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../WhispreClient/WhispreClient/Crypto/SessionManager.swift" beforeDir="false" afterPath="$PROJECT_DIR$/../WhispreClient/WhispreClient/Crypto/SessionManager.swift" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -17,6 +24,9 @@
       </list>
     </option>
   </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 1
 }</component>
@@ -25,21 +35,22 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Python.devices.executor&quot;: &quot;Run&quot;,
-    &quot;Python.schemas.executor&quot;: &quot;Run&quot;,
-    &quot;Python.users.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.lookFeel&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.devices.executor": "Run",
+    "Python.schemas.executor": "Run",
+    "Python.users.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "git-widget-placeholder": "dev/1.0",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "preferences.lookFeel",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -76,7 +87,7 @@
       <workItem from="1763035438031" duration="2989000" />
       <workItem from="1763508195182" duration="1182000" />
       <workItem from="1764172726260" duration="640000" />
-      <workItem from="1764193748549" duration="1992000" />
+      <workItem from="1764193748549" duration="2881000" />
     </task>
     <servers />
   </component>
