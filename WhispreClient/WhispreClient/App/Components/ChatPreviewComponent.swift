@@ -56,7 +56,9 @@ struct ChatPreviewComponent: View {
                     .font(Font.custom("Inter", size: 13))
                     .fontWeight(.regular)
                     .foregroundStyle(Color("ColorTextGray"))
-                    .multilineTextAlignment(.center)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 5) {

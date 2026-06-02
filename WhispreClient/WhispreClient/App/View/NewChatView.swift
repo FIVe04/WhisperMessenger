@@ -11,8 +11,7 @@ struct NewChatView: View {
     
     @State var searchText: String = ""
     @State var foundUser: Friend? = nil
-    @EnvironmentObject var viewModel: FriendsViewModel
-    
+    @EnvironmentObject var appState: AppState
     
     var body: some View {
         NavigationStack {
@@ -32,18 +31,17 @@ struct NewChatView: View {
                     .padding(.top, 10)
                     
                     Button(action: {
+                        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !query.isEmpty else {
+                            foundUser = nil
+                            return
+                        }
                         Task {
                             do {
-                                if let user = try await APIService.shared.fetchUserByUsername(username: searchText) {
-                                    print("User found:", user.username)
-                                    foundUser = user
-                                } else {
-                                    print("User not found")
-                                    foundUser = nil
-                                }
-                            }
-                            catch {
-                                print("User not found")
+                                foundUser = try await appState.searchUser(username: query)
+                            } catch {
+                                appState.latestError = error.localizedDescription
+                                foundUser = nil
                             }
                         }
                             
@@ -60,8 +58,8 @@ struct NewChatView: View {
                 .padding(.horizontal, 20)
 
                 
-                if foundUser != nil {
-                    NavigationLink(destination: ChatView(recipientUserID: foundUser!.id, username: foundUser!.username, friendsVM: viewModel)) {
+                if let foundUser {
+                    NavigationLink(destination: ChatView(friend: foundUser)) {
                         HStack(spacing: 10) {
                             Image("avatar")
                                 .resizable()
@@ -69,7 +67,7 @@ struct NewChatView: View {
                                 .frame(width: 54, height: 54)
                                 .clipShape(Circle())
                             VStack(alignment: .leading, spacing: 5) {
-                                Text(foundUser!.username)
+                                Text(foundUser.username)
                                     .font(Font.custom("Inter", size: 20))
                                     .fontWeight(.semibold)
                                     .foregroundStyle(.black)
@@ -104,4 +102,5 @@ struct NewChatView: View {
 
 #Preview {
     NewChatView()
+        .environmentObject(AppState())
 }

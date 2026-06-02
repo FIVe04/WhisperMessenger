@@ -8,19 +8,14 @@
 import SwiftUI
 
 struct ChatView: View {
-    
-    @StateObject var vm: ChatViewModel
-    
-    @State var username: String
-    @State var status: String = "Online now"
+    @State var friend: Friend
+    @State private var conversationID: String?
     @State private var newMessageText = ""
     @Environment(\.dismiss) private var dismiss
-    
-    
-    
-    init(recipientUserID: String, username: String, friendsVM: FriendsViewModel) {
-        _vm = StateObject(wrappedValue: ChatViewModel(recipientUserID: recipientUserID, friendsVM: friendsVM))
-        self.username = username
+    @EnvironmentObject var appState: AppState
+
+    init(friend: Friend) {
+        _friend = State(initialValue: friend)
     }
     
     var body: some View {
@@ -43,12 +38,12 @@ struct ChatView: View {
                     .clipShape(Circle())
                 
                 VStack(alignment: .leading) {
-                    Text(username)
+                    Text(friend.username)
                         .font(Font.custom("Inter", size: 15))
                         .fontWeight(.semibold)
                         .foregroundStyle(.black)
                         .multilineTextAlignment(.center)
-                    Text(status)
+                    Text(appState.realtimeStatus.title)
                         .font(Font.custom("Inter", size: 13))
                         .fontWeight(.regular)
                         .foregroundStyle(.colorTextGray)
@@ -63,7 +58,7 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 20) {
-                        ForEach(Array(vm.messages.enumerated()), id: \.element.id) { index, message in
+                        ForEach(appState.messages(for: conversationID)) { message in
                             if message.isMine {
                                 MessageSentComponent(
                                     messageText: message.text,
@@ -82,20 +77,46 @@ struct ChatView: View {
                     .padding(.vertical, 20)
                 }
                 .onAppear {
-                    vm.onAppear()
-                    scrollToBottom(proxy: proxy)
+                    appState.latestError = nil
+                    Task {
+                        do {
+                            let resolved = try await appState.ensureConversation(with: friend)
+                            friend = resolved
+                            conversationID = resolved.conversationID
+                            if let conversationID = resolved.conversationID {
+                                try await appState.loadConversationHistory(conversationID: conversationID, limit: 200)
+                            }
+                            try await appState.refreshPendingMessages()
+                        } catch {
+                            appState.latestError = error.localizedDescription
+                        }
+                        scrollToBottom(proxy: proxy)
+                    }
                 }
-                .onChange(of: vm.messages.count) { _ in
+                .onChange(of: appState.messages(for: conversationID).count) { _ in
                     withAnimation {
                         scrollToBottom(proxy: proxy)
                     }
                 }
             }
+
+            if let error = appState.latestError, !error.isEmpty {
+                Text(error)
+                    .foregroundColor(.red)
+                    .font(.caption)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
+            }
             
             MessageInputBarComponent(message: $newMessageText) { text in
-                vm.input = text
-                vm.send()
-                newMessageText = ""
+                Task {
+                    do {
+                        try await appState.sendMessage(text: text, to: friend)
+                        newMessageText = ""
+                    } catch {
+                        appState.latestError = error.localizedDescription
+                    }
+                }
             }
         }
 
@@ -104,7 +125,7 @@ struct ChatView: View {
     }
     
     private func scrollToBottom(proxy: ScrollViewProxy) {
-        if let lastID = vm.messages.last?.id {
+        if let lastID = appState.messages(for: conversationID).last?.id {
             proxy.scrollTo(lastID, anchor: .bottom)
         }
     }

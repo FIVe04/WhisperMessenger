@@ -9,7 +9,12 @@ import SwiftUI
 
 
 struct RegisterView: View {
-    @StateObject private var viewModel = RegisterViewModel()
+    @State private var username: String = ""
+    @State private var email: String = ""
+    @State private var password: String = ""
+    @State private var repeatPassword: String = ""
+    @State private var isLoading: Bool = false
+    @State private var errorMessage: String?
     @State var isOn: Bool = false
     @EnvironmentObject var appState: AppState
     
@@ -48,33 +53,54 @@ struct RegisterView: View {
                         .padding(.top, 10)
                     
                     VStack {
-                        TextField("Username", text: $viewModel.username)
+                        TextField("Username", text: $username)
                             .textFieldStyle(CustomTextFieldStyle(height: 46))
                             .padding(.top, 50)
                             .textInputAutocapitalization(.never)
-                        TextField("Email", text: $viewModel.email)
+                        TextField("Email", text: $email)
                             .textFieldStyle(CustomTextFieldStyle(height: 46))
                             .padding(.top,  10)
                             .textInputAutocapitalization(.never)
-                        SecureField("Password", text: $viewModel.password)
+                        SecureField("Password", text: $password)
                             .textFieldStyle(CustomTextFieldStyle(height: 46))
                             .padding(.top, 10)
                             .textInputAutocapitalization(.never)
-                        SecureField("Repeat password", text: $viewModel.repeatPassword)
+                        SecureField("Repeat password", text: $repeatPassword)
                             .textFieldStyle(CustomTextFieldStyle(height: 46))
                             .padding(.top, 10)
                             .textInputAutocapitalization(.never)
                         
                         
                         Button(action: {
+                            errorMessage = nil
+                            let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                            guard !trimmedUsername.isEmpty, !trimmedEmail.isEmpty, !trimmedPassword.isEmpty else {
+                                errorMessage = "Please fill in all fields"
+                                return
+                            }
+                            guard password == repeatPassword else {
+                                errorMessage = "Passwords do not match"
+                                return
+                            }
+
                             Task {
-                                await viewModel.register()
-                                if viewModel.isRegistered {
-                                    appState.isRegistered = true
+                                isLoading = true
+                                do {
+                                    try await appState.register(
+                                        username: trimmedUsername,
+                                        email: trimmedEmail,
+                                        password: trimmedPassword
+                                    )
+                                } catch {
+                                    errorMessage = error.localizedDescription
                                 }
+                                isLoading = false
                             }
                         }) {
-                            if viewModel.isLoading {
+                            if isLoading {
                                 ProgressView()
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     .background(Color.accentBlue)
@@ -92,7 +118,7 @@ struct RegisterView: View {
                         .frame(height: 46)
                         .padding(.horizontal, 24)
                         .padding(.top, 24)
-                        if let error = viewModel.errorMessage {
+                        if let error = errorMessage {
                             Text(error)
                                 .foregroundColor(.red)
                                 .font(.caption)
@@ -141,4 +167,5 @@ struct RegisterView: View {
 
 #Preview {
     RegisterView()
+        .environmentObject(AppState())
 }

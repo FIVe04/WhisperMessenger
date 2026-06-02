@@ -8,10 +8,9 @@
 import SwiftUI
 
 struct ChatsView: View {
-    @State var username: String = "David"
     @State var areNewNotifications: Bool = true
     @State var searchText: String = ""
-    @EnvironmentObject var viewModel: FriendsViewModel
+    @EnvironmentObject var appState: AppState
 
     var body: some View {
         NavigationStack {
@@ -27,7 +26,7 @@ struct ChatsView: View {
                         Text("Hello")
                             .font(Font.custom("Inter", size: 16))
                             .fontWeight(.medium)
-                        Text("\(username) 👋")
+                        Text("\(appState.currentUsername) 👋")
                             .font(Font.custom("Inter", size: 16))
                             .fontWeight(.bold)
                     }
@@ -41,6 +40,15 @@ struct ChatsView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
+
+                HStack {
+                    Text("Realtime: \(appState.realtimeStatus.title)")
+                        .font(Font.custom("Inter", size: 12))
+                        .foregroundColor(.gray)
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 6)
 
 
                 HStack {
@@ -60,8 +68,8 @@ struct ChatsView: View {
 
                 ScrollView {
                     VStack(spacing: 0) {
-                        ForEach(viewModel.friends.filter { $0.username.contains(searchText) || searchText.isEmpty }) { friend in
-                            NavigationLink(destination: ChatView(recipientUserID: friend.id, username: friend.username, friendsVM: viewModel))
+                        ForEach(appState.chats.filter { $0.username.localizedCaseInsensitiveContains(searchText) || searchText.isEmpty }) { friend in
+                            NavigationLink(destination: ChatView(friend: friend))
                                 {
                                 ChatPreviewComponent(
                                     username: friend.username,
@@ -77,24 +85,15 @@ struct ChatsView: View {
                 }
             }
         }
-        .onChange(of: viewModel.friends) { newFriends in
-            print("🖌️ [ChatsView] friends changed:", newFriends)
-        }
         .onAppear {
-            viewModel.onAppear()
             Task {
-                let myUserId = UserDefaults.standard.string(forKey: "userId") ?? ""
                 do {
-                    let user = try await APIService.shared.fetchUserProfile(id: myUserId)
-                    username = user!.username
+                    try await appState.refreshChats()
+                    try await appState.refreshPendingMessages()
                 } catch {
-                    username = ""
+                    appState.latestError = error.localizedDescription
                 }
             }
-            
-        }
-        .task {
-            await viewModel.loadFriends()
         }
         .navigationBarBackButtonHidden(true)
     }
@@ -103,4 +102,5 @@ struct ChatsView: View {
 
 #Preview {
     ChatsView()
+        .environmentObject(AppState())
 }

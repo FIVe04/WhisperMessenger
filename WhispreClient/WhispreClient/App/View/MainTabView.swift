@@ -9,7 +9,6 @@ import SwiftUI
 
 struct MainTabView: View {
     @State private var selectedTab: TabItem = .chats
-    @EnvironmentObject var viewModel: FriendsViewModel
     @EnvironmentObject var appState: AppState
 
     var body: some View {
@@ -20,7 +19,6 @@ struct MainTabView: View {
                     Text(TabItem.chats.title)
                 }
                 .tag(TabItem.chats)
-                .environmentObject(viewModel)
             
             
             VStack{
@@ -38,7 +36,6 @@ struct MainTabView: View {
                 Text(TabItem.compose.title)
             }
             .tag(TabItem.compose)
-            .environmentObject(viewModel)
             
             VStack{
                 Text("Groups")
@@ -65,5 +62,5 @@ struct MainTabView: View {
 
 #Preview {
     MainTabView()
+        .environmentObject(AppState())
 }
-

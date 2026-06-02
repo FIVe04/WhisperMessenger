@@ -1,0 +1,177 @@
+version: "3.9"
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      - zookeeper
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: whispre
+      POSTGRES_USER: whispre
+      POSTGRES_PASSWORD: whispre
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+
+  api-gateway:
+    build: ./services/api-gateway
+    environment:
+      SERVICE_NAME: api-gateway
+      KAFKA_BROKER: kafka:9092
+      POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
+      REDIS_URL: redis://redis:6379/0
+      AUTH_SERVICE_URL: http://auth-service:8000
+      USER_SERVICE_URL: http://user-service:8000
+      KEY_SERVICE_URL: http://key-service:8000
+      CONVERSATION_SERVICE_URL: http://conversation-service:8000
+      MESSAGE_SERVICE_URL: http://message-service:8000
+      REALTIME_SERVICE_URL: http://realtime-service:8000
+      NOTIFICATION_SERVICE_URL: http://notification-service:8000
+      JWT_SECRET: dev-change-me
+      JWT_ALGORITHM: HS256
+      RATE_LIMIT_REQUESTS_PER_MINUTE: 240
+    ports:
+      - "8000:8000"
+    depends_on:
+      - kafka
+      - postgres
+      - redis
+
+  auth-service:
+    build: ./services/auth-service
+    environment:
+      SERVICE_NAME: auth-service
+      KAFKA_BROKER: kafka:9092
+      POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: dev-change-me
+      JWT_ALGORITHM: HS256
+    ports:
+      - "8001:8000"
+    depends_on:
+      - kafka
+      - postgres
+      - redis
+
+  user-service:
+    build: ./services/user-service
+    environment:
+      SERVICE_NAME: user-service
+      KAFKA_BROKER: kafka:9092
+      POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: dev-change-me
+      JWT_ALGORITHM: HS256
+    ports:
+      - "8002:8000"
+    depends_on:
+      - kafka
+      - postgres
+
+  key-service:
+    build: ./services/key-service
+    environment:
+      SERVICE_NAME: key-service
+      KAFKA_BROKER: kafka:9092
+      POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
+      JWT_SECRET: dev-change-me
+      JWT_ALGORITHM: HS256
+    ports:
+      - "8003:8000"
+    depends_on:
+      - kafka
+      - postgres
+
+  conversation-service:
+    build: ./services/conversation-service
+    environment:
+      SERVICE_NAME: conversation-service
+      KAFKA_BROKER: kafka:9092
+      POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
+      JWT_SECRET: dev-change-me
+      JWT_ALGORITHM: HS256
+    ports:
+      - "8004:8000"
+    depends_on:
+      - kafka
+      - postgres
+
+  message-service:
+    build: ./services/message-service
+    environment:
+      SERVICE_NAME: message-service
+      KAFKA_BROKER: kafka:9092
+      POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: dev-change-me
+      JWT_ALGORITHM: HS256
+      KAFKA_TOPIC_ENVELOPE_ACCEPTED: message.envelope.accepted.v1
+    ports:
+      - "8005:8000"
+    depends_on:
+      - kafka
+      - postgres
+      - redis
+
+  realtime-service:
+    build: ./services/realtime-service
+    environment:
+      SERVICE_NAME: realtime-service
+      KAFKA_BROKER: kafka:9092
+      REDIS_URL: redis://redis:6379/0
+      POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
+      JWT_SECRET: dev-change-me
+      JWT_ALGORITHM: HS256
+      KAFKA_TOPIC_ENVELOPE_ACCEPTED: message.envelope.accepted.v1
+    ports:
+      - "8006:8000"
+    depends_on:
+      - kafka
+      - redis
+
+  notification-service:
+    build: ./services/notification-service
+    environment:
+      SERVICE_NAME: notification-service
+      KAFKA_BROKER: kafka:9092
+      POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
+      JWT_SECRET: dev-change-me
+      JWT_ALGORITHM: HS256
+      KAFKA_TOPIC_ENVELOPE_ACCEPTED: message.envelope.accepted.v1
+      KAFKA_CONSUMER_GROUP: notification-service-v1
+    ports:
+      - "8007:8000"
+    depends_on:
+      - kafka
+      - postgres
+
+volumes:
+  pg_data:

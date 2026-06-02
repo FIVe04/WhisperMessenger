@@ -52,7 +52,10 @@ struct CheckboxToggleStyle: ToggleStyle {
 }
 
 struct LoginView: View {
-    @StateObject private var viewModel = LoginViewModel()
+    @State private var email: String = ""
+    @State private var password: String = ""
+    @State private var isLoading: Bool = false
+    @State private var errorMessage: String?
     @State var isOn: Bool = false
     @EnvironmentObject var appState: AppState
     
@@ -88,11 +91,11 @@ struct LoginView: View {
                         .padding(.top, 10)
                     
                     VStack {
-                        TextField("Email", text: $viewModel.email)
+                        TextField("Email", text: $email)
                             .textFieldStyle(CustomTextFieldStyle(height: 46))
                             .padding(.top, 50)
                             .textInputAutocapitalization(.never)
-                        SecureField("Password", text: $viewModel.password)
+                        SecureField("Password", text: $password)
                             .textFieldStyle(CustomTextFieldStyle(height: 46))
                             .padding(.top, 10)
                             .textInputAutocapitalization(.never)
@@ -116,15 +119,26 @@ struct LoginView: View {
                         .padding(.top, 12)
                         
                         Button(action: {
+                            errorMessage = nil
+                            let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                            guard !trimmedEmail.isEmpty, !trimmedPassword.isEmpty else {
+                                errorMessage = "Please fill in email and password"
+                                return
+                            }
+
                             Task {
-                                await viewModel.login()
-                                if viewModel.isLoggedIn {
-                                    await SessionInitializer.shared.startSession()
-                                    appState.isLoggedIn = true
+                                isLoading = true
+                                do {
+                                    try await appState.login(email: trimmedEmail, password: trimmedPassword)
+                                } catch {
+                                    errorMessage = error.localizedDescription
                                 }
+                                isLoading = false
                             }
                         }) {
-                            if viewModel.isLoading {
+                            if isLoading {
                                 ProgressView()
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                             } else {
@@ -141,7 +155,7 @@ struct LoginView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 24)
                         
-                        if let error = viewModel.errorMessage {
+                        if let error = errorMessage {
                             Text(error)
                                 .foregroundColor(.red)
                                 .font(.caption)
@@ -194,4 +208,5 @@ struct LoginView: View {
 
 #Preview {
     LoginView()
+        .environmentObject(AppState())
 }
