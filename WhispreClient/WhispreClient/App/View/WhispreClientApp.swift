@@ -1,6 +1,6 @@
 //
 //  WhispreClientApp.swift
-//  WhispreClient
+//  WhispreClientuser
 //
 //  Created by Ivan Frolov on 17.10.2025.
 //

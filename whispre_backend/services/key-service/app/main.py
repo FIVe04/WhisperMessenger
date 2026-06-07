@@ -41,6 +41,7 @@ def get_user_bundles(
             select
               d.id::text as device_id,
               b.identity_key_pub,
+              b.identity_signing_key_pub,
               b.signed_prekey_id,
               b.signed_prekey_pub,
               b.signed_prekey_signature
@@ -56,6 +57,7 @@ def get_user_bundles(
         KeyBundle(
             device_id=row['device_id'],
             identity_key_pub=row['identity_key_pub'],
+            identity_signing_key_pub=row['identity_signing_key_pub'],
             signed_prekey_id=row['signed_prekey_id'],
             signed_prekey_pub=row['signed_prekey_pub'],
             signed_prekey_signature=row['signed_prekey_signature'],
@@ -79,6 +81,7 @@ def claim_one_time_prekey(
             select
               d.id::text as device_id,
               b.identity_key_pub,
+              b.identity_signing_key_pub,
               b.signed_prekey_id,
               b.signed_prekey_pub,
               b.signed_prekey_signature
@@ -122,6 +125,7 @@ def claim_one_time_prekey(
     return KeyBundle(
         device_id=bundle['device_id'],
         identity_key_pub=bundle['identity_key_pub'],
+        identity_signing_key_pub=bundle['identity_signing_key_pub'],
         signed_prekey_id=bundle['signed_prekey_id'],
         signed_prekey_pub=bundle['signed_prekey_pub'],
         signed_prekey_signature=bundle['signed_prekey_signature'],
@@ -142,14 +146,16 @@ def update_device_bundle(
             insert into device_key_bundles (
               device_id,
               identity_key_pub,
+              identity_signing_key_pub,
               signed_prekey_id,
               signed_prekey_pub,
               signed_prekey_signature,
               updated_at
             )
-            values (%s, %s, %s, %s, %s, now())
+            values (%s, %s, %s, %s, %s, %s, now())
             on conflict (device_id) do update
             set identity_key_pub = excluded.identity_key_pub,
+                identity_signing_key_pub = excluded.identity_signing_key_pub,
                 signed_prekey_id = excluded.signed_prekey_id,
                 signed_prekey_pub = excluded.signed_prekey_pub,
                 signed_prekey_signature = excluded.signed_prekey_signature,
@@ -158,6 +164,7 @@ def update_device_bundle(
             (
                 device_id,
                 payload.identity_key_pub,
+                payload.identity_signing_key_pub,
                 payload.signed_prekey_id,
                 payload.signed_prekey_pub,
                 payload.signed_prekey_signature,

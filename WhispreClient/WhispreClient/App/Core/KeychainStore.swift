@@ -23,6 +23,11 @@ final class KeychainStore {
         return result as? Data
     }
 
+    func getString(account: String) -> String? {
+        guard let data = getData(account: account) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     func setData(_ data: Data, account: String) {
         let baseQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -43,6 +48,10 @@ final class KeychainStore {
         createQuery[kSecValueData as String] = data
         createQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         SecItemAdd(createQuery as CFDictionary, nil)
+    }
+
+    func setString(_ value: String, account: String) {
+        setData(Data(value.utf8), account: account)
     }
 
     func remove(account: String) {

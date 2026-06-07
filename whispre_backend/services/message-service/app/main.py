@@ -70,6 +70,46 @@ def ensure_device_owner(conn, user_id: str, device_id: str) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Device does not belong to user')
 
 
+def ensure_envelope_route_allowed(
+    conn,
+    *,
+    conversation_id: str,
+    sender_user_id: str,
+    sender_device_id: str,
+    recipient_user_id: str,
+    recipient_device_id: str,
+) -> None:
+    rows = conn.execute(
+        '''
+        select user_id::text as user_id
+        from conversation_participants
+        where conversation_id = %s
+          and user_id in (%s, %s)
+        ''',
+        (conversation_id, sender_user_id, recipient_user_id),
+    ).fetchall()
+    participant_ids = {row['user_id'] for row in rows}
+    if sender_user_id not in participant_ids:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Sender has no access to conversation')
+    if recipient_user_id not in participant_ids:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Recipient has no access to conversation')
+
+    device_rows = conn.execute(
+        '''
+        select id::text as device_id, user_id::text as user_id
+        from devices
+        where id in (%s, %s)
+          and is_active = true
+        ''',
+        (sender_device_id, recipient_device_id),
+    ).fetchall()
+    device_owners = {row['device_id']: row['user_id'] for row in device_rows}
+    if device_owners.get(sender_device_id) != sender_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Sender device does not belong to sender')
+    if device_owners.get(recipient_device_id) != recipient_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Recipient device does not belong to recipient')
+
+
 @app.get('/health')
 def health() -> dict[str, str]:
     return {'status': 'ok', 'service': SERVICE_NAME}
@@ -103,7 +143,14 @@ async def send_envelopes_batch(
             if env.sender_device_id != sender_device_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Batch must use one sender device')
 
-            ensure_conversation_access(conn, current_user_id, env.conversation_id)
+            ensure_envelope_route_allowed(
+                conn,
+                conversation_id=env.conversation_id,
+                sender_user_id=env.sender_user_id,
+                sender_device_id=env.sender_device_id,
+                recipient_user_id=env.recipient_user_id,
+                recipient_device_id=env.recipient_device_id,
+            )
 
             result = conn.execute(
                 '''

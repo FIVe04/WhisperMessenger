@@ -13,8 +13,10 @@ final class SessionStore: ObservableObject {
     @Published var hasRegistered: Bool
 
     private enum Keys {
-        static let accessToken = "session.accessToken"
-        static let refreshToken = "session.refreshToken"
+        static let legacyAccessToken = "session.accessToken"
+        static let legacyRefreshToken = "session.refreshToken"
+        static let keychainAccessToken = "accessToken"
+        static let keychainRefreshToken = "refreshToken"
         static let userID = "session.userId"
         static let ownerUserID = "session.ownerUserId"
         static let username = "session.username"
@@ -23,10 +25,22 @@ final class SessionStore: ObservableObject {
         static let hasRegistered = "session.hasRegistered"
     }
 
+    private let keychain = KeychainStore(service: "com.whispre.client.session")
+
     init() {
         let defaults = UserDefaults.standard
-        accessToken = defaults.string(forKey: Keys.accessToken)
-        refreshToken = defaults.string(forKey: Keys.refreshToken)
+        accessToken = Self.loadToken(
+            account: Keys.keychainAccessToken,
+            legacyKey: Keys.legacyAccessToken,
+            keychain: keychain,
+            defaults: defaults
+        )
+        refreshToken = Self.loadToken(
+            account: Keys.keychainRefreshToken,
+            legacyKey: Keys.legacyRefreshToken,
+            keychain: keychain,
+            defaults: defaults
+        )
         userID = defaults.string(forKey: Keys.userID)
         ownerUserID = defaults.string(forKey: Keys.ownerUserID)
         username = defaults.string(forKey: Keys.username)
@@ -48,9 +62,10 @@ final class SessionStore: ObservableObject {
     func saveTokens(access: String, refresh: String) {
         accessToken = access
         refreshToken = refresh
-        let defaults = UserDefaults.standard
-        defaults.set(access, forKey: Keys.accessToken)
-        defaults.set(refresh, forKey: Keys.refreshToken)
+        keychain.setString(access, account: Keys.keychainAccessToken)
+        keychain.setString(refresh, account: Keys.keychainRefreshToken)
+        UserDefaults.standard.removeObject(forKey: Keys.legacyAccessToken)
+        UserDefaults.standard.removeObject(forKey: Keys.legacyRefreshToken)
     }
 
     func saveUser(id: String, username: String) {
@@ -102,8 +117,10 @@ final class SessionStore: ObservableObject {
         username = nil
 
         let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: Keys.accessToken)
-        defaults.removeObject(forKey: Keys.refreshToken)
+        keychain.remove(account: Keys.keychainAccessToken)
+        keychain.remove(account: Keys.keychainRefreshToken)
+        defaults.removeObject(forKey: Keys.legacyAccessToken)
+        defaults.removeObject(forKey: Keys.legacyRefreshToken)
         defaults.removeObject(forKey: Keys.userID)
         defaults.removeObject(forKey: Keys.username)
     }
@@ -118,8 +135,10 @@ final class SessionStore: ObservableObject {
         hasRegistered = false
 
         let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: Keys.accessToken)
-        defaults.removeObject(forKey: Keys.refreshToken)
+        keychain.remove(account: Keys.keychainAccessToken)
+        keychain.remove(account: Keys.keychainRefreshToken)
+        defaults.removeObject(forKey: Keys.legacyAccessToken)
+        defaults.removeObject(forKey: Keys.legacyRefreshToken)
         defaults.removeObject(forKey: Keys.userID)
         defaults.removeObject(forKey: Keys.ownerUserID)
         defaults.removeObject(forKey: Keys.username)
@@ -129,5 +148,24 @@ final class SessionStore: ObservableObject {
         let newDeviceID = UUID().uuidString.lowercased()
         deviceID = newDeviceID
         defaults.set(newDeviceID, forKey: Keys.deviceID)
+    }
+
+    private static func loadToken(
+        account: String,
+        legacyKey: String,
+        keychain: KeychainStore,
+        defaults: UserDefaults
+    ) -> String? {
+        if let value = keychain.getString(account: account) {
+            defaults.removeObject(forKey: legacyKey)
+            return value
+        }
+
+        guard let legacyValue = defaults.string(forKey: legacyKey) else {
+            return nil
+        }
+        keychain.setString(legacyValue, account: account)
+        defaults.removeObject(forKey: legacyKey)
+        return legacyValue
     }
 }

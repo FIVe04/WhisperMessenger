@@ -33,6 +33,7 @@ create index if not exists idx_refresh_tokens_user_device on refresh_tokens(user
 create table if not exists device_key_bundles (
   device_id uuid primary key references devices(id) on delete cascade,
   identity_key_pub text not null,
+  identity_signing_key_pub text not null default '',
   signed_prekey_id bigint not null,
   signed_prekey_pub text not null,
   signed_prekey_signature text not null,

@@ -53,8 +53,15 @@ class NotificationQueue:
 notification_queue = NotificationQueue(settings.queue_max_per_device)
 
 
-async def consume_events(consumer: AIOKafkaConsumer) -> None:
+async def consume_events() -> None:
     while True:
+        consumer = AIOKafkaConsumer(
+            settings.kafka_topic_envelope_accepted,
+            bootstrap_servers=settings.kafka_broker,
+            group_id=settings.kafka_consumer_group,
+            enable_auto_commit=True,
+            auto_offset_reset='latest',
+        )
         try:
             await consumer.start()
             logger.info('Kafka consumer started')
@@ -90,14 +97,7 @@ async def consume_events(consumer: AIOKafkaConsumer) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    consumer = AIOKafkaConsumer(
-        settings.kafka_topic_envelope_accepted,
-        bootstrap_servers=settings.kafka_broker,
-        group_id=settings.kafka_consumer_group,
-        enable_auto_commit=True,
-        auto_offset_reset='latest',
-    )
-    task = asyncio.create_task(consume_events(consumer))
+    task = asyncio.create_task(consume_events())
     app.state.kafka_task = task
 
     try:

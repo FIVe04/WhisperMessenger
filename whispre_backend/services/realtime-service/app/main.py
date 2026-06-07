@@ -46,8 +46,15 @@ class DeviceConnectionManager:
 manager = DeviceConnectionManager()
 
 
-async def consume_envelope_events(consumer: AIOKafkaConsumer) -> None:
+async def consume_envelope_events() -> None:
     while True:
+        consumer = AIOKafkaConsumer(
+            settings.kafka_topic_envelope_accepted,
+            bootstrap_servers=settings.kafka_broker,
+            group_id=settings.kafka_consumer_group,
+            enable_auto_commit=True,
+            auto_offset_reset='latest',
+        )
         try:
             await consumer.start()
             logger.info('Kafka consumer started')
@@ -67,6 +74,7 @@ async def consume_envelope_events(consumer: AIOKafkaConsumer) -> None:
                         'envelope_id': payload.get('envelope_id'),
                         'conversation_id': payload.get('conversation_id'),
                         'sender_user_id': payload.get('sender_user_id'),
+                        'recipient_user_id': payload.get('recipient_user_id'),
                         'recipient_device_id': recipient_device_id,
                     },
                 )
@@ -82,14 +90,7 @@ async def consume_envelope_events(consumer: AIOKafkaConsumer) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    consumer = AIOKafkaConsumer(
-        settings.kafka_topic_envelope_accepted,
-        bootstrap_servers=settings.kafka_broker,
-        group_id=settings.kafka_consumer_group,
-        enable_auto_commit=True,
-        auto_offset_reset='latest',
-    )
-    task = asyncio.create_task(consume_envelope_events(consumer))
+    task = asyncio.create_task(consume_envelope_events())
     app.state.kafka_task = task
 
     try:

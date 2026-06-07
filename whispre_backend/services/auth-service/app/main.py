@@ -205,14 +205,16 @@ def register_device(
             insert into device_key_bundles (
                 device_id,
                 identity_key_pub,
+                identity_signing_key_pub,
                 signed_prekey_id,
                 signed_prekey_pub,
                 signed_prekey_signature,
                 updated_at
             )
-            values (%s, %s, %s, %s, %s, now())
+            values (%s, %s, %s, %s, %s, %s, now())
             on conflict (device_id) do update
             set identity_key_pub = excluded.identity_key_pub,
+                identity_signing_key_pub = excluded.identity_signing_key_pub,
                 signed_prekey_id = excluded.signed_prekey_id,
                 signed_prekey_pub = excluded.signed_prekey_pub,
                 signed_prekey_signature = excluded.signed_prekey_signature,
@@ -221,6 +223,7 @@ def register_device(
             (
                 effective_device_id,
                 payload.identity_key_pub,
+                payload.identity_signing_key_pub,
                 payload.signed_prekey_id,
                 payload.signed_prekey_pub,
                 payload.signed_prekey_signature,

@@ -233,12 +233,17 @@ final class AppState: ObservableObject {
             conversationID: conversationID
         )
         let recipientDeviceID = session.recipientDeviceID
-        let encryptedText = try cryptoService.encryptMessage(
+        let encrypted = try cryptoService.encryptMessage(
             plaintext: text,
             senderUserID: senderUserID,
             senderDeviceID: senderDeviceID,
             recipientDeviceID: recipientDeviceID,
             recipientIdentityPubBase64: session.recipientIdentityPub,
+            recipientSignedPrekeyID: session.recipientSignedPrekeyID,
+            recipientSignedPrekeyPubBase64: session.recipientSignedPrekeyPub,
+            recipientOneTimePrekeyID: session.claimedOneTimePrekeyID,
+            recipientOneTimePrekeyPubBase64: session.recipientOneTimePrekeyPub,
+            senderEphemeralPrivateKeyBase64: session.senderEphemeralPrivateKey,
             conversationID: conversationID,
             sessionID: session.sessionID
         )
@@ -255,11 +260,15 @@ final class AppState: ObservableObject {
             senderDeviceId: senderDeviceID,
             recipientUserId: resolved.id,
             recipientDeviceId: recipientDeviceID,
-            ciphertext: encryptedText,
+            ciphertext: encrypted.ciphertext,
             header: RatchetHeaderDTO(
                 ratchetPub: "sess:\(session.sessionID):\(senderIdentityPub)",
                 pn: 0,
-                n: 1
+                n: 1,
+                protocolVersion: 2,
+                senderEphemeralPub: encrypted.senderEphemeralPub,
+                signedPrekeyId: encrypted.signedPrekeyID,
+                oneTimePrekeyId: encrypted.oneTimePrekeyID
             ),
             sentAtClient: Date(),
             acceptedAtServer: nil,
@@ -402,6 +411,10 @@ final class AppState: ObservableObject {
         guard event.type == "new_envelope" else { return }
         do {
             try await refreshPendingMessages()
+            if let conversationID = event.conversationId {
+                try await loadConversationHistory(conversationID: conversationID, limit: 200)
+                try? await ensureChatExistsForConversation(conversationID)
+            }
         } catch {
             latestError = error.localizedDescription
         }
@@ -477,7 +490,10 @@ final class AppState: ObservableObject {
                recipientUserID: recipientUserID,
                recipientDeviceID: recipientDeviceIDHint,
                conversationID: conversationID
-           ) {
+           ),
+           existing.recipientSignedPrekeyID != nil,
+           existing.recipientSignedPrekeyPub != nil,
+           existing.senderEphemeralPrivateKey != nil {
             return existing
         }
 
@@ -490,12 +506,17 @@ final class AppState: ObservableObject {
             }
             claimed = fallback
         }
+
+        try cryptoService.validateKeyBundle(claimed)
         return cryptoService.createOrUpdateOutboundSession(
             senderUserID: senderUserID,
             senderDeviceID: senderDeviceID,
             recipientUserID: recipientUserID,
             recipientDeviceID: claimed.deviceId,
             recipientIdentityPub: claimed.identityKeyPub,
+            recipientSignedPrekeyID: claimed.signedPrekeyId,
+            recipientSignedPrekeyPub: claimed.signedPrekeyPub,
+            recipientOneTimePrekeyPub: claimed.oneTimePrekey?.prekeyPub,
             conversationID: conversationID,
             claimedOneTimePrekeyID: claimed.oneTimePrekey?.prekeyId
         )
@@ -559,8 +580,12 @@ final class AppState: ObservableObject {
             senderDeviceID: envelope.senderDeviceId,
             recipientDeviceID: envelope.recipientDeviceId,
             senderUserID: envelope.senderUserId,
+            recipientUserID: envelope.recipientUserId,
             conversationID: envelope.conversationId,
-            sessionID: sessionID
+            sessionID: sessionID,
+            senderEphemeralPub: envelope.header.senderEphemeralPub,
+            signedPrekeyID: envelope.header.signedPrekeyId,
+            oneTimePrekeyID: envelope.header.oneTimePrekeyId
         )
     }
 

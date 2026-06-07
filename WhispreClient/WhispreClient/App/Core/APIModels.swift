@@ -41,6 +41,7 @@ struct DeviceRegisterRequestDTO: Encodable {
     let deviceName: String
     let platform: String
     let identityKeyPub: String
+    let identitySigningKeyPub: String
     let signedPrekeyID: Int
     let signedPrekeyPub: String
     let signedPrekeySignature: String
@@ -81,6 +82,7 @@ struct KeyBundleDTO: Decodable {
 
     let deviceId: String
     let identityKeyPub: String
+    let identitySigningKeyPub: String
     let signedPrekeyId: Int
     let signedPrekeyPub: String
     let signedPrekeySignature: String
@@ -91,6 +93,10 @@ struct RatchetHeaderDTO: Codable {
     let ratchetPub: String
     let pn: Int
     let n: Int
+    let protocolVersion: Int?
+    let senderEphemeralPub: String?
+    let signedPrekeyId: Int?
+    let oneTimePrekeyId: Int?
 }
 
 struct EnvelopeDTO: Codable {
@@ -126,6 +132,7 @@ struct RealtimeEventDTO: Decodable {
     let envelopeId: String?
     let conversationId: String?
     let senderUserId: String?
+    let recipientUserId: String?
     let recipientDeviceId: String?
 }
 
