@@ -1,0 +1,40 @@
+groups:
+  - name: whispre-services
+    rules:
+      - alert: WhispreServiceDown
+        expr: up{job="whispre-services"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Whispre service is unavailable"
+          description: "Prometheus cannot scrape {{ $labels.instance }} for more than one minute."
+
+      - alert: WhispreHighErrorRate
+        expr: |
+          (
+            sum by (service) (rate(whispre_http_requests_total{status=~"5.."}[5m]))
+            /
+            clamp_min(sum by (service) (rate(whispre_http_requests_total[5m])), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP error rate in {{ $labels.service }}"
+          description: "More than 5% of requests have returned 5xx for five minutes."
+
+      - alert: WhispreHighP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (service, le) (
+              rate(whispre_http_request_duration_seconds_bucket[5m])
+            )
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 latency in {{ $labels.service }}"
+          description: "The p95 HTTP latency has exceeded one second for five minutes."

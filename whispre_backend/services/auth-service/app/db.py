@@ -1,19 +1,5 @@
-from contextlib import contextmanager
-
-from psycopg import Connection
-from psycopg.rows import dict_row
+from whispre_common.database import create_session_context
 
 from .config import settings
 
-
-@contextmanager
-def get_db() -> Connection:
-    conn = Connection.connect(settings.postgres_dsn, row_factory=dict_row)
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+get_db = create_session_context(settings.postgres_dsn, commit_on_success=True)

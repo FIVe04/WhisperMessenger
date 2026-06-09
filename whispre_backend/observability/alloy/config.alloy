@@ -1,0 +1,79 @@
+discovery.docker "podman" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "5s"
+}
+
+discovery.relabel "whispre" {
+  targets = discovery.docker.podman.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "whispre_backend"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/?(.*)"
+    target_label  = "container"
+    replacement   = "$1"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "compose_project"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "compose_service"
+  }
+}
+
+loki.source.docker "whispre" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.whispre.output
+  labels     = {
+    environment = "local",
+    application = "whispre",
+  }
+  forward_to = [loki.process.whispre.receiver]
+}
+
+loki.process "whispre" {
+  stage.json {
+    expressions = {
+      event     = "event",
+      level     = "level",
+      service   = "service",
+      timestamp = "timestamp",
+    }
+  }
+
+  stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339Nano"
+  }
+
+  stage.labels {
+    values = {
+      event   = "",
+      level   = "",
+      service = "",
+    }
+  }
+
+  stage.static_labels {
+    values = {
+      source = "container",
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

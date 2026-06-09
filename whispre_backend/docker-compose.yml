@@ -36,15 +36,32 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
 
+  migration:
+    profiles:
+      - tools
+    build:
+      context: .
+      dockerfile: db/Dockerfile
+    environment:
+      POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
+    volumes:
+      - ./alembic.ini:/app/alembic.ini:ro
+      - ./db/alembic:/app/db/alembic
+    depends_on:
+      - postgres
+
   redis:
     image: redis:7.4-alpine
     ports:
       - "6379:6379"
 
   api-gateway:
-    build: ./services/api-gateway
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
     environment:
       SERVICE_NAME: api-gateway
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       KAFKA_BROKER: kafka:9092
       POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
       REDIS_URL: redis://redis:6379/0
@@ -66,9 +83,12 @@ services:
       - redis
 
   auth-service:
-    build: ./services/auth-service
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
     environment:
       SERVICE_NAME: auth-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       KAFKA_BROKER: kafka:9092
       POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
       REDIS_URL: redis://redis:6379/0
@@ -82,9 +102,12 @@ services:
       - redis
 
   user-service:
-    build: ./services/user-service
+    build:
+      context: .
+      dockerfile: services/user-service/Dockerfile
     environment:
       SERVICE_NAME: user-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       KAFKA_BROKER: kafka:9092
       POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
       REDIS_URL: redis://redis:6379/0
@@ -97,9 +120,12 @@ services:
       - postgres
 
   key-service:
-    build: ./services/key-service
+    build:
+      context: .
+      dockerfile: services/key-service/Dockerfile
     environment:
       SERVICE_NAME: key-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       KAFKA_BROKER: kafka:9092
       POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
       JWT_SECRET: dev-change-me
@@ -111,9 +137,12 @@ services:
       - postgres
 
   conversation-service:
-    build: ./services/conversation-service
+    build:
+      context: .
+      dockerfile: services/conversation-service/Dockerfile
     environment:
       SERVICE_NAME: conversation-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       KAFKA_BROKER: kafka:9092
       POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
       JWT_SECRET: dev-change-me
@@ -125,9 +154,12 @@ services:
       - postgres
 
   message-service:
-    build: ./services/message-service
+    build:
+      context: .
+      dockerfile: services/message-service/Dockerfile
     environment:
       SERVICE_NAME: message-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       KAFKA_BROKER: kafka:9092
       POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
       REDIS_URL: redis://redis:6379/0
@@ -142,9 +174,12 @@ services:
       - redis
 
   realtime-service:
-    build: ./services/realtime-service
+    build:
+      context: .
+      dockerfile: services/realtime-service/Dockerfile
     environment:
       SERVICE_NAME: realtime-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       KAFKA_BROKER: kafka:9092
       REDIS_URL: redis://redis:6379/0
       POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
@@ -158,9 +193,12 @@ services:
       - redis
 
   notification-service:
-    build: ./services/notification-service
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
     environment:
       SERVICE_NAME: notification-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       KAFKA_BROKER: kafka:9092
       POSTGRES_DSN: postgresql://whispre:whispre@postgres:5432/whispre
       JWT_SECRET: dev-change-me
@@ -173,5 +211,86 @@ services:
       - kafka
       - postgres
 
+  prometheus:
+    image: prom/prometheus:v3.5.3
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - api-gateway
+      - auth-service
+      - user-service
+      - key-service
+      - conversation-service
+      - message-service
+      - realtime-service
+      - notification-service
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.7.2
+    command:
+      - -config.file=/etc/loki/loki.yml
+    ports:
+      - "127.0.0.1:3100:3100"
+    volumes:
+      - ./observability/loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    restart: unless-stopped
+
+  alloy:
+    image: grafana/alloy:v1.16.1
+    user: "0:0"
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    ports:
+      - "127.0.0.1:12345:12345"
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ${CONTAINER_SOCKET_PATH:-/run/user/501/podman/podman.sock}:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    security_opt:
+      - label=disable
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.4.3-security-02
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana_data_v12:/var/lib/grafana
+      - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+
 volumes:
   pg_data:
+  prometheus_data:
+  loki_data:
+  alloy_data:
+  grafana_data_v12:

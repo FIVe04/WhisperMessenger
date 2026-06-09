@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "whispre-common"
+version = "0.1.0"
+description = "Shared infrastructure helpers for Whispre backend services"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi==0.115.12",
+    "pydantic-settings==2.8.1",
+    "psycopg[binary]==3.2.6",
+    "SQLAlchemy==2.0.41",
+    "PyJWT==2.10.1",
+    "prometheus-client==0.25.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["whispre_common*"]

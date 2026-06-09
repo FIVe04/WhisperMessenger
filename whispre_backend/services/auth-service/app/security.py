@@ -1,11 +1,9 @@
 import hashlib
-import uuid
 import base64
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 
-import jwt
-from fastapi import HTTPException, status
 from passlib.context import CryptContext
+from whispre_common.auth import build_token, decode_token as decode_jwt_token, hash_token
 
 from .config import settings
 
@@ -27,18 +25,13 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def _build_token(sub: str, token_type: str, ttl_seconds: int) -> tuple[str, str, datetime]:
-    now = datetime.now(UTC)
-    exp = now + timedelta(seconds=ttl_seconds)
-    jti = str(uuid.uuid4())
-    payload = {
-        'sub': sub,
-        'typ': token_type,
-        'jti': jti,
-        'iat': int(now.timestamp()),
-        'exp': int(exp.timestamp()),
-    }
-    token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
-    return token, jti, exp
+    return build_token(
+        sub,
+        token_type,
+        ttl_seconds,
+        secret=settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
 
 
 def create_access_token(user_id: str) -> str:
@@ -51,16 +44,9 @@ def create_refresh_token(user_id: str) -> tuple[str, str, datetime]:
 
 
 def decode_token(token: str, expected_type: str | None = None) -> dict:
-    try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    except jwt.PyJWTError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid token') from exc
-
-    if expected_type and payload.get('typ') != expected_type:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid token type')
-
-    return payload
-
-
-def hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode('utf-8')).hexdigest()
+    return decode_jwt_token(
+        token,
+        secret=settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+        expected_type=expected_type,
+    )

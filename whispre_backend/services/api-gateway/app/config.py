@@ -1,9 +1,7 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from whispre_common.settings import ServiceSettings
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file='.env', extra='ignore')
-
+class Settings(ServiceSettings):
     service_name: str = 'api-gateway'
     auth_service_url: str = 'http://auth-service:8000'
     user_service_url: str = 'http://user-service:8000'
@@ -12,9 +10,6 @@ class Settings(BaseSettings):
     message_service_url: str = 'http://message-service:8000'
     realtime_service_url: str = 'http://realtime-service:8000'
     notification_service_url: str = 'http://notification-service:8000'
-
-    jwt_secret: str = 'change-me'
-    jwt_algorithm: str = 'HS256'
 
     rate_limit_requests_per_minute: int = 240
 

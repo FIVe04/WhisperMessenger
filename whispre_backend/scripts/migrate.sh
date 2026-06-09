@@ -2,7 +2,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MIGRATIONS_DIR="$ROOT_DIR/db/migrations"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
 
 if [[ -n "${CONTAINER_CLI:-}" ]]; then
@@ -16,10 +15,5 @@ else
   exit 1
 fi
 
-for migration in "$MIGRATIONS_DIR"/*.sql; do
-  echo "Applying migration: $(basename "$migration")"
-  "$CONTAINER_CLI" compose -f "$COMPOSE_FILE" exec -T postgres \
-    psql -U whispre -d whispre < "$migration"
-done
-
-echo "Migrations applied"
+"$CONTAINER_CLI" compose -f "$COMPOSE_FILE" --profile tools build migration
+"$CONTAINER_CLI" compose -f "$COMPOSE_FILE" --profile tools run --rm --no-deps migration

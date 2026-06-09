@@ -1,13 +1,8 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from whispre_common.settings import DatabaseSettings
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file='.env', extra='ignore')
-
+class Settings(DatabaseSettings):
     service_name: str = 'key-service'
-    postgres_dsn: str = 'postgresql://whispre:whispre@postgres:5432/whispre'
-    jwt_secret: str = 'change-me'
-    jwt_algorithm: str = 'HS256'
 
 
 settings = Settings()
