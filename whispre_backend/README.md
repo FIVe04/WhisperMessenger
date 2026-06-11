@@ -1,121 +1,92 @@
-# Whispre Backend (Microservices Scaffold)
+# Whispre Backend
 
-Backend scaffold for E2E messenger MVP with Kafka-based eventing.
+Микросервисный backend прототипа iOS-мессенджера со сквозным шифрованием.
+Сервер маршрутизирует и хранит зашифрованные конверты, но не выполняет
+шифрование или расшифрование сообщений.
 
-## Services
+## Состав системы
 
-- api-gateway (`:8000`)
-- auth-service (`:8001`)
-- user-service (`:8002`)
-- key-service (`:8003`)
-- conversation-service (`:8004`)
-- message-service (`:8005`)
-- realtime-service (`:8006`)
-- notification-service (`:8007`)
+| Компонент | Порт | Назначение |
+| --- | ---: | --- |
+| `api-gateway` | 8000 | HTTP-прокси, JWT guard, rate limit |
+| `auth-service` | 8001 | Регистрация, вход, refresh/logout, устройства |
+| `user-service` | 8002 | Профиль и поиск пользователей |
+| `key-service` | 8003 | Key bundles и one-time prekeys |
+| `conversation-service` | 8004 | Личные диалоги и участники |
+| `message-service` | 8005 | Envelopes, pending, история и ACK |
+| `realtime-service` | 8006 | WebSocket и Kafka consumer |
+| `notification-service` | 8007 | Временная очередь уведомлений |
+| PostgreSQL | 5432 | Общая реляционная база данных |
+| Kafka | 9094 | Внешний порт брокера |
+| Zookeeper | 2181 | Координация Kafka |
+| Redis | 6379 | Зарезервирован в Compose, бизнес-логикой не используется |
+| Grafana | 3000 | Дашборды |
+| Prometheus | 9090 | Метрики |
+| Loki | 3100 | Логи |
+| Alloy | 12345 | Сбор контейнерных логов |
 
-Infrastructure:
+## Требования
 
-- Kafka (`localhost:9094`)
-- Zookeeper (`localhost:2181`)
-- PostgreSQL (`localhost:5432`)
-- Redis (`localhost:6379`)
+- Docker Compose или Podman Compose;
+- `bash`, `curl` и Python 3 для локальных скриптов;
+- свободные порты, перечисленные выше.
 
-## Quick start
+Скрипты автоматически выбирают Docker, если он доступен, иначе Podman.
+Можно явно задать CLI:
 
 ```bash
-cd whispre_backend
-docker compose up -d postgres redis zookeeper kafka
+CONTAINER_CLI=podman ./scripts/migrate.sh
+CONTAINER_CLI=podman ./scripts/create-topics.sh
+```
+
+## Первый запуск
+
+Из каталога `whispre_backend`:
+
+```bash
+cp .env.example .env
+docker compose up -d postgres zookeeper kafka redis
 ./scripts/migrate.sh
 ./scripts/create-topics.sh
 docker compose up --build -d
 ```
 
-Health checks:
+Для Podman:
 
 ```bash
-curl http://localhost:8000/health
-curl http://localhost:8001/health
-curl http://localhost:8002/health
-curl http://localhost:8003/health
-curl http://localhost:8004/health
-curl http://localhost:8005/health
-curl http://localhost:8006/health
-curl http://localhost:8007/health
+cp .env.example .env
+podman compose up -d postgres zookeeper kafka redis
+CONTAINER_CLI=podman ./scripts/migrate.sh
+CONTAINER_CLI=podman ./scripts/create-topics.sh
+podman compose up --build -d
 ```
 
-Gateway entrypoint:
+Перед созданием топиков Kafka должна перейти в состояние `running`. Проверить
+контейнеры можно командой:
 
 ```bash
-curl http://localhost:8000/v1/auth/login
+docker compose ps
 ```
 
-Create Kafka topics:
+или:
 
 ```bash
-./scripts/create-topics.sh
+podman compose ps
 ```
 
-Critical-path smoke test:
+## Миграции базы данных
 
-```bash
-./scripts/smoke-test.sh
-```
+Схема описана SQLAlchemy-моделями в
+`packages/whispre_common/whispre_common/models.py`. История миграций находится
+в `db/alembic/versions`.
 
-The smoke test creates two unique users and devices, claims a one-time prekey,
-creates a direct conversation, verifies that recipient-device spoofing is
-rejected, sends an encrypted envelope, reads it from pending/history, and
-acknowledges it.
-
-To test another gateway URL:
-
-```bash
-WHISPRE_BASE_URL=https://api.example.com ./scripts/smoke-test.sh
-```
-
-## Service code structure
-
-Each service uses the same small composition-oriented layout:
-
-- `main.py` creates the FastAPI application and registers its router/lifespan.
-- `router.py` owns HTTP or WebSocket transport contracts.
-- `dependencies.py` contains FastAPI authentication dependencies.
-- `service.py` owns business rules and database operations.
-- `schemas.py` contains request and response models.
-- `consumer.py`, `producer.py`, `connections.py`, `queue.py`, and `lifespan.py`
-  isolate long-running Kafka, WebSocket, and in-memory runtime components where
-  the service needs them.
-
-Cross-service settings, JWT helpers, and database context helpers live in
-`packages/whispre_common`.
-
-Database access uses SQLAlchemy 2.x with the synchronous psycopg 3 driver.
-Shared declarative models live in `packages/whispre_common/whispre_common/models.py`,
-while each service owns its queries and business rules. Sessions are short
-lived, transactional, and created through the shared engine factory with
-connection health checks enabled. Application startup never calls
-`Base.metadata.create_all`; schema changes are managed explicitly by Alembic.
-
-## Database migrations
-
-Alembic configuration is stored in `alembic.ini`, and revision files live in
-`db/alembic/versions`. Migrations execute in a dedicated short-lived container,
-so Alembic is not installed in application service images. PostgreSQL must
-already be running; the migration command uses `--no-deps` and never recreates
-the rest of the Compose stack.
-
-Apply all migrations:
+Применить миграции:
 
 ```bash
 ./scripts/migrate.sh
 ```
 
-On an empty database this creates the schema and the `alembic_version` table.
-When upgrading a database created by the previous SQL scripts, the migration
-runner first verifies all expected tables and columns, stamps the baseline, and
-then upgrades to the latest revision. A partially matching legacy schema is
-rejected instead of being stamped.
-
-Useful Alembic commands:
+Полезные команды Alembic:
 
 ```bash
 ./scripts/alembic.sh current
@@ -124,88 +95,214 @@ Useful Alembic commands:
 ./scripts/alembic.sh downgrade -1
 ```
 
-Autogenerated revisions are candidates and must be reviewed before they are
-committed or applied. The SQLAlchemy models describe the target schema;
-revision files remain the source of truth for schema history.
+Alembic запускается в отдельном Compose-профиле `tools`. Приложения не вызывают
+`Base.metadata.create_all()` при старте. Для старой базы migration runner может
+проверить совместимость существующей схемы и установить baseline; частично
+совместимая схема отклоняется.
+
+## Kafka
+
+Создание топиков:
+
+```bash
+./scripts/create-topics.sh
+```
+
+Скрипт создаёт набор топиков, предусмотренных архитектурой проекта. Текущий
+рабочий поток использует `message.envelope.accepted.v1`:
+
+1. `message-service` сохраняет конверт в PostgreSQL;
+2. `message-service` публикует событие в Kafka;
+3. `realtime-service` отправляет WebSocket-событие устройству получателя;
+4. `notification-service` помещает уведомление во временную очередь.
+
+`realtime-service` и `notification-service` используют разные consumer groups.
+Transactional Outbox не реализован: публикация выполняется после завершения
+транзакции PostgreSQL.
+
+## Проверка работоспособности
+
+Health endpoints:
+
+```bash
+for port in 8000 8001 8002 8003 8004 8005 8006 8007; do
+  curl "http://localhost:${port}/health"
+done
+```
+
+Health endpoint подтверждает работу процесса, но не проверяет PostgreSQL,
+Kafka или другие зависимости. Отдельного `/ready` сейчас нет.
+
+Интеграционный smoke test:
+
+```bash
+./scripts/smoke-test.sh
+```
+
+Проверяется цепочка из десяти шагов:
+
+- регистрация двух пользователей;
+- регистрация устройств и key bundles;
+- получение и claim one-time prekey;
+- создание direct conversation;
+- отказ при подмене устройства получателя;
+- отправка encrypted envelope;
+- pending, история, ACK и удаление сообщения из pending.
+
+Smoke test проверяет серверный контракт с синтетическим ciphertext. Реальные
+операции CryptoKit проверяются при запуске iOS-клиента, а не этим скриптом.
+
+Другой адрес API Gateway:
+
+```bash
+WHISPRE_BASE_URL=https://api.example.com ./scripts/smoke-test.sh
+```
+
+## Основные HTTP endpoints
+
+### Auth
+
+- `POST /v1/auth/register`
+- `POST /v1/auth/login`
+- `POST /v1/auth/refresh`
+- `POST /v1/auth/logout`
+- `POST /v1/auth/devices/register`
+
+### Users and keys
+
+- `GET /v1/users/search`
+- `GET /v1/users/me`
+- `GET /v1/keys/users/{user_id}/bundles`
+- `POST /v1/keys/users/{user_id}/one-time-prekey/claim`
+- `PUT /v1/keys/devices/{device_id}/bundle`
+- `POST /v1/keys/devices/{device_id}/one-time-prekeys/replenish`
+
+### Conversations and messages
+
+- `POST /v1/conversations/direct`
+- `GET /v1/conversations`
+- `GET /v1/conversations/{conversation_id}/participants`
+- `POST /v1/messages/envelopes:batch`
+- `GET /v1/messages/envelopes/pending`
+- `POST /v1/messages/envelopes/{envelope_id}/ack`
+- `GET /v1/messages/conversations/{conversation_id}`
+
+### Realtime and notifications
+
+- `WS /v1/realtime/ws?device_id={device_id}`
+- `GET /v1/notifications/pending`
+- `POST /v1/notifications/{notification_id}/ack`
+
+REST-запросы клиента проходят через API Gateway. WebSocket iOS-клиент открывает
+напрямую к `realtime-service` на `localhost:8006` и передаёт access token в
+заголовке `Authorization`.
+
+## Безопасность backend
+
+API Gateway проверяет access JWT для защищённых `/v1/*` маршрутов и применяет
+простой rate limit по IP: 240 запросов в минуту по умолчанию. Состояние лимитера
+хранится в памяти одного процесса и не синхронизируется между репликами.
+
+`message-service` проверяет:
+
+- пользователя отправителя по JWT;
+- участие отправителя и получателя в диалоге;
+- принадлежность активных устройств соответствующим пользователям;
+- UUID, формат ciphertext и поля E2E-заголовка;
+- идемпотентность по `(sender_device_id, idempotency_key)`.
+
+`key-service` атомарно выдаёт one-time prekey через
+`FOR UPDATE SKIP LOCKED`. Изменять bundle и пополнять prekeys может только
+владелец устройства.
+
+Backend работает в single-device режиме: регистрация второго активного
+устройства для аккаунта возвращает `409 Conflict`. Endpoint для деактивации или
+замены устройства не реализован.
+
+## Структура кода
+
+Каждый сервис использует небольшую композиционную структуру:
+
+- `main.py` создаёт FastAPI application;
+- `router.py` содержит HTTP или WebSocket-контракты;
+- `dependencies.py` содержит FastAPI-зависимости авторизации;
+- `service.py` содержит бизнес-правила и запросы к БД;
+- `schemas.py` содержит Pydantic-модели;
+- `producer.py`, `consumer.py`, `connections.py`, `queue.py` и `lifespan.py`
+  изолируют Kafka, WebSocket и временное состояние.
+
+Общие SQLAlchemy-модели, настройки, JWT-, database-, logging- и
+observability-хелперы находятся в `packages/whispre_common`.
+
+SQLAlchemy использует синхронный psycopg 3. Большинство обычных endpoint
+объявлены синхронными и исполняются FastAPI в thread pool. Асинхронный код
+используется для API Gateway, Kafka и WebSocket.
 
 ## Observability
 
-The local stack includes:
+Локальные интерфейсы:
 
-- Prometheus at `http://localhost:9090`
-- Grafana at `http://localhost:3000`
-- Loki at `http://localhost:3100`
-- Alloy UI at `http://localhost:12345`
+- Grafana: `http://localhost:3000`;
+- Prometheus: `http://localhost:9090`;
+- Loki: `http://localhost:3100`;
+- Alloy: `http://localhost:12345`.
 
-Grafana is provisioned automatically with Prometheus and Loki data sources and
-the `Whispre / Whispre Overview` dashboard. Local credentials default to
-`admin` / `admin`. Set `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD` in
-`.env` before using the stack outside a local demonstration.
+Grafana автоматически получает источники Prometheus и Loki и дашборд
+`Whispre Overview`. При использовании `.env.example` учётные данные:
+`admin` / `change-me`. Без `.env` Compose использует fallback
+`admin` / `admin`. Для любого нелокального запуска пароль необходимо заменить.
 
-Observability ports are bound to `127.0.0.1`. Do not expose Prometheus, Loki,
-or Alloy directly to the public network; use an authenticated reverse proxy or
-a private monitoring network in a deployed environment.
+Каждый FastAPI-сервис предоставляет `/metrics`:
 
-Each FastAPI service exposes `/metrics` with:
+- количество и длительность HTTP-запросов;
+- запросы в обработке;
+- результат обработки Kafka-событий;
+- число активных WebSocket-соединений.
 
-- request count, status, route, and method;
-- request duration histogram;
-- requests currently in progress;
-- Kafka producer/consumer event counters;
-- active realtime WebSocket connections.
+Сервисы пишут JSON-логи в stdout. В них есть `timestamp`, `level`, `service`,
+`logger`, `event`, `message` и при наличии `request_id`. Пароли, токены,
+ciphertext, plaintext и приватные ключи намеренно не логируются.
 
-Prometheus includes alerts for unavailable services, elevated 5xx rate, and
-high p95 latency. Prometheus metrics and Loki logs are retained for seven days.
-
-Backend services write structured JSON logs to stdout. Each application log
-contains `timestamp`, `level`, `service`, `event`, and `message`. HTTP logs also
-contain `request_id`, route, status, and duration; authenticated domain events
-may contain entity UUIDs and counters. Passwords, tokens, ciphertext, message
-contents, private keys, and key material are intentionally excluded.
-
-Alloy parses JSON and exposes `service`, `level`, and `event` as Loki labels.
-Use the Service and Level filters on the Grafana dashboard, or query Loki:
+Alloy читает логи через Docker-совместимый сокет и добавляет Loki labels
+`service`, `level` и `event`. Пример LogQL:
 
 ```logql
 {application="whispre", service="message-service", level=~"warning|error"} | json
 ```
 
-Clients may provide `X-Request-ID`; otherwise the backend generates it, returns
-it in the response, and forwards it through the API Gateway. Set `LOG_LEVEL`
-in `.env` to change the default `INFO` threshold.
+Prometheus и Loki хранят локальные данные семь дней. В Prometheus настроены
+правила для недоступного сервиса, доли 5xx выше 5% и p95 latency выше секунды.
 
-Alloy discovers containers through the Docker-compatible Podman socket. The
-default socket path matches rootless Podman Machine on this project host:
-
-```bash
-CONTAINER_SOCKET_PATH=/run/user/501/podman/podman.sock
-```
-
-Docker Engine users should set:
-
-```bash
-CONTAINER_SOCKET_PATH=/var/run/docker.sock
-```
-
-Verify the complete monitoring stack:
+Проверка observability:
 
 ```bash
 ./scripts/observability-check.sh
 ```
 
-## Notes
+Для rootless Podman Machine путь к сокету задаётся в `.env`, например:
 
-- Implemented endpoints:
-  - `auth-service`: `/v1/auth/register`, `/v1/auth/login`, `/v1/auth/refresh`, `/v1/auth/logout`, `/v1/auth/devices/register`
-  - `user-service`: `/v1/users/search`, `/v1/users/me`
-  - `key-service`: `/v1/keys/users/{user_id}/bundles`, `/v1/keys/users/{user_id}/one-time-prekey/claim`, `/v1/keys/devices/{device_id}/bundle`, `/v1/keys/devices/{device_id}/one-time-prekeys/replenish`
-  - `conversation-service`: `/v1/conversations/direct`, `/v1/conversations`, `/v1/conversations/{conversation_id}/participants`
-  - `message-service`: `/v1/messages/envelopes:batch`, `/v1/messages/envelopes/pending`, `/v1/messages/envelopes/{envelope_id}/ack`, `/v1/messages/conversations/{conversation_id}`
-- `notification-service`: `/v1/notifications/pending`, `/v1/notifications/{notification_id}/ack`
-- `api-gateway` proxies HTTP `/v1/*` paths to internal services and applies:
-  - auth guard for non-`/v1/auth/*` paths (JWT access token check)
-  - simple in-memory per-IP rate limit
-- `realtime-service` provides WebSocket at `/v1/realtime/ws?device_id=...` and pushes events from Kafka topic `message.envelope.accepted.v1`.
-- `notification-service` consumes Kafka topic `message.envelope.accepted.v1` and builds per-device pending notification queues.
-- For now WebSocket should be opened directly against `realtime-service` (`localhost:8006`), not through gateway.
-- Keep payloads encrypted end-to-end; server stores only ciphertext envelopes and delivery metadata.
+```bash
+CONTAINER_SOCKET_PATH=/run/user/501/podman/podman.sock
+```
+
+Для Docker Engine:
+
+```bash
+CONTAINER_SOCKET_PATH=/var/run/docker.sock
+```
+
+## Локальные ограничения
+
+- REST и WebSocket работают без TLS;
+- Compose содержит демонстрационные секреты и пароль PostgreSQL;
+- внутренние сервисы опубликованы на host-портах;
+- notification queue и rate limiter находятся в памяти;
+- Redis пока не участвует в бизнес-логике;
+- нет Transactional Outbox;
+- нет горизонтального масштабирования stateful-компонентов;
+- нет production-ready device replacement;
+- автоматизирован только интеграционный smoke test.
+
+Перед публичным развёртыванием необходимы HTTPS/WSS, безопасное хранение
+секретов, закрытая сеть внутренних сервисов, постоянные очереди и отдельная
+production-конфигурация инфраструктуры.

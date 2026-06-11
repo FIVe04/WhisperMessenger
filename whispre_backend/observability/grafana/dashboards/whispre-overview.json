@@ -15,10 +15,9 @@
       }
     ]
   },
-  "editable": false,
+  "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": null,
   "links": [],
   "panels": [
     {
@@ -37,7 +36,7 @@
             "steps": [
               {
                 "color": "red",
-                "value": null
+                "value": 0
               },
               {
                 "color": "green",
@@ -72,6 +71,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
+      "pluginVersion": "12.4.3+security-02",
       "targets": [
         {
           "expr": "sum(up{job=\"whispre-services\"})",
@@ -97,7 +97,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "red",
@@ -133,6 +133,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
+      "pluginVersion": "12.4.3+security-02",
       "targets": [
         {
           "expr": "sum(rate(whispre_http_requests_total{status=~\"5..\"}[$__rate_interval]))",
@@ -153,11 +154,13 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 12,
             "gradientMode": "none",
@@ -166,6 +169,7 @@
               "tooltip": false,
               "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 2,
             "pointSize": 5,
@@ -173,6 +177,7 @@
               "type": "linear"
             },
             "showPoints": "never",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -188,7 +193,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -216,6 +221,7 @@
           "sort": "desc"
         }
       },
+      "pluginVersion": "12.4.3+security-02",
       "targets": [
         {
           "expr": "histogram_quantile(0.95, sum by (service, le) (rate(whispre_http_request_duration_seconds_bucket[$__rate_interval])))",
@@ -237,11 +243,13 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 15,
             "gradientMode": "none",
@@ -250,6 +258,7 @@
               "tooltip": false,
               "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 2,
             "pointSize": 5,
@@ -257,6 +266,7 @@
               "type": "linear"
             },
             "showPoints": "never",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -272,7 +282,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -300,6 +310,7 @@
           "sort": "desc"
         }
       },
+      "pluginVersion": "12.4.3+security-02",
       "targets": [
         {
           "expr": "sum by (service) (rate(whispre_http_requests_total[$__rate_interval]))",
@@ -321,11 +332,13 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 15,
             "gradientMode": "none",
@@ -334,6 +347,7 @@
               "tooltip": false,
               "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 2,
             "pointSize": 5,
@@ -341,6 +355,7 @@
               "type": "linear"
             },
             "showPoints": "never",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -356,7 +371,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           }
@@ -383,6 +398,7 @@
           "sort": "desc"
         }
       },
+      "pluginVersion": "12.4.3+security-02",
       "targets": [
         {
           "expr": "sum by (service, direction, result) (rate(whispre_kafka_events_total[$__rate_interval]))",
@@ -403,6 +419,10 @@
         "type": "loki",
         "uid": "loki"
       },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
       "gridPos": {
         "h": 10,
         "w": 24,
@@ -416,14 +436,20 @@
         "enableLogDetails": true,
         "prettifyLogMessage": true,
         "showCommonLabels": false,
+        "showControls": false,
         "showLabels": false,
         "showTime": true,
         "sortOrder": "Descending",
+        "unwrappedColumns": false,
         "wrapLogMessage": true
       },
+      "pluginVersion": "12.4.3+security-02",
       "targets": [
         {
-          "expr": "{application=\"whispre\", service=~\"$service\", level=~\"$level\"} | json",
+          "direction": "backward",
+          "editorMode": "code",
+          "expr": "{application=\"whispre\", service=~\"api-gateway|auth-service|user-service|key-service|conversation-service|message-service|realtime-service|notification-service\"} | json",
+          "queryType": "range",
           "refId": "A"
         }
       ],
@@ -434,6 +460,10 @@
       "datasource": {
         "type": "loki",
         "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
@@ -448,11 +478,14 @@
         "enableLogDetails": true,
         "prettifyLogMessage": true,
         "showCommonLabels": false,
+        "showControls": false,
         "showLabels": false,
         "showTime": true,
         "sortOrder": "Descending",
+        "unwrappedColumns": false,
         "wrapLogMessage": true
       },
+      "pluginVersion": "12.4.3+security-02",
       "targets": [
         {
           "expr": "{application=\"whispre\", service=~\"$service\", level=~\"warning|error\"} | json",
@@ -463,8 +496,9 @@
       "type": "logs"
     }
   ],
+  "preload": false,
   "refresh": "10s",
-  "schemaVersion": 41,
+  "schemaVersion": 42,
   "tags": [
     "whispre",
     "observability"
@@ -493,6 +527,7 @@
         },
         "refresh": 1,
         "regex": "",
+        "regexApplyTo": "value",
         "sort": 1,
         "type": "query"
       },
@@ -529,7 +564,8 @@
           }
         ],
         "query": "debug,info,warning,error",
-        "type": "custom"
+        "type": "custom",
+        "valuesFormat": "csv"
       }
     ]
   },
@@ -541,5 +577,6 @@
   "timezone": "browser",
   "title": "Whispre Overview",
   "uid": "whispre-overview",
-  "version": 3
+  "version": 1,
+  "weekStart": ""
 }
